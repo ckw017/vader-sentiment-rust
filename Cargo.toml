@@ -1,0 +1,9 @@
+[package]
+name = "vader_sentiment"
+version = "0.1.0"
+authors = ["Chris <christopherwong888@gmail.com>"]
+
+[dependencies]
+regex = "1"
+maplit = "1.0.1"
+lazy_static = "1.1.0"
