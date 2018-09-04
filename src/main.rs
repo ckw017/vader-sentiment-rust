@@ -1,7 +1,5 @@
 extern crate vader_sentiment;
 
-use vader_sentiment::utils;
-
 fn main() {
     // println!("B_INCR = {}", vader_sentiment::utils::B_INCR);
     // let words = vec!["HEyasd", "asdS(DASka)", "YupP"];
@@ -24,7 +22,7 @@ fn main() {
 
     // println!("{:#?}", *utils::EMOJI_LEXICON);
     // println!("{:#?}", *utils::LEXICON);
-    let sia = utils::SentimentIntensityAnalyzer::new();
-    let text = "This is not bad at all!";
+    let sia = vader_sentiment::SentimentIntensityAnalyzer::new();
+    let text = "Holy shit that's amazing!";
     println!("{:#?}", sia.polarity_scores(&text));
 }
