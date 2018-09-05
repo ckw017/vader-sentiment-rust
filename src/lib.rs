@@ -6,13 +6,17 @@ use std::cmp::min;
 use std::collections::HashMap;
 use regex::Regex;
 
+#[cfg(test)]
+mod tests;
+
+//empirically derived constants for scaling/amplifying sentiments
 const B_INCR: f64 =  0.293;
 const B_DECR: f64 = -0.293;
 
 const C_INCR:   f64 =  0.733;
 const NEGATION_SCALAR: f64 = -0.740;
 
-//Empirically derived sentiment increases for text with question or exclamation marks
+//sentiment increases for text with question or exclamation marks
 const QMARK_INCR: f64 = 0.180;
 const EMARK_INCR: f64 = 0.292;
 
@@ -24,7 +28,7 @@ const MAX_QMARK_INCR: f64 = 0.96;
 
 const NORMALIZATION_ALPHA: f64 = 15.0;
 
-const NEGATION_TOKENS: [&'static str; 59] =
+static NEGATION_TOKENS: [&'static str; 59] =
     ["aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt",
     "ain't", "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't",
     "dont", "hadnt", "hasnt", "havent", "isnt", "mightnt", "mustnt", "neither",
@@ -34,8 +38,8 @@ const NEGATION_TOKENS: [&'static str; 59] =
     "oughtn't", "shan't", "shouldn't", "uh-uh", "wasn't", "weren't",
     "without", "wont", "wouldnt", "won't", "wouldn't", "rarely", "seldom", "despite"];
 
-const RAW_LEXICON: &'static str = include_str!("resources/vader_lexicon.txt");
-const RAW_EMOJI_LEXICON: &'static str = include_str!("resources/emoji_utf8_lexicon.txt");
+static RAW_LEXICON: &'static str = include_str!("resources/vader_lexicon.txt");
+static RAW_EMOJI_LEXICON: &'static str = include_str!("resources/emoji_utf8_lexicon.txt");
 
 lazy_static! {
     static ref BOOSTER_DICT: HashMap<&'static str, f64> =  hashmap![
@@ -57,15 +61,21 @@ lazy_static! {
          "scarcely" => B_DECR, "slightly" => B_DECR, "somewhat" => B_DECR,
          "sort of" => B_DECR, "sorta" => B_DECR, "sortof" => B_DECR, "sort-of" => B_DECR];
 
-    //check for sentiment laden idioms that do not contain lexicon words (future work, not yet implemented)
+    /**
+     * These dicts were used in some WIP or planned features in the original
+     * I may implement them later if I can understand how they're intended to work
+     **/
+
+    // // check for sentiment laden idioms that do not contain lexicon words (future work, not yet implemented)
     // static ref SENTIMENT_LADEN_IDIOMS: HashMap<&'static str, f64> = hashmap![
     //      "cut the mustard" => 2.0, "hand to mouth" => -2.0,
     //      "back handed" => -2.0, "blow smoke" => -2.0, "blowing smoke" => -2.0,
     //      "upper hand" => 1.0, "break a leg" => 2.0,
     //      "cooking with gas" => 2.0, "in the black" => 2.0, "in the red" => -2.0,
     //      "on the ball" => 2.0, "under the weather" => -2.0];
-    //
-    // //check for special case idioms containing lexicon words
+
+
+    //check for special case idioms containing lexicon words
     // static ref SPECIAL_CASE_IDIOMS: HashMap<&'static str, f64> = hashmap![
     //      "the shit" => 3.0, "the bomb" => 3.0, "bad ass" => 1.5, "yeah right" => -2.0,
     //      "kiss of death" => -1.5];
@@ -80,8 +90,8 @@ lazy_static! {
 
 
 /**
-Takes the raw text of the lexicon files and creates HashMaps
-**/
+ * Takes the raw text of the lexicon files and creates HashMaps
+ **/
 pub fn parse_raw_lexicon(raw_lexicon: &str) -> HashMap<&str, f64> {
     let lines = raw_lexicon.split("\n");
     let mut lex_dict = HashMap::new();
@@ -106,14 +116,90 @@ pub fn parse_raw_emoji_lexicon(raw_emoji_lexicon: &str) -> HashMap<&str, &str> {
     emoji_dict
 }
 
+/**
+ *  Stores tokens and useful info about text
+ **/
+struct ParsedText<'a> {
+    tokens: Vec<&'a str>,
+    has_mixed_caps: bool,
+    punc_amplifier: f64,
+}
+
+impl<'a> ParsedText<'a> {
+    //Tokenizes and extracts useful properties of input text
+    fn from_text(text: &'a str) -> ParsedText {
+        let _tokens = ParsedText::tokenize(text);
+        let _has_mixed_caps = ParsedText::has_mixed_caps(&_tokens);
+        let _punc_amplifier = ParsedText::get_punctuation_emphasis(text);
+        ParsedText {
+            tokens: _tokens,
+            has_mixed_caps: _has_mixed_caps,
+            punc_amplifier: _punc_amplifier,
+         }
+    }
+
+    fn tokenize(text: &'a str) -> Vec<&str> {
+        let tokens: Vec<&str> = text.split_whitespace()
+                                    .filter(|s| s.len() > 1)
+                                    .map(|s| ParsedText::strip_punc_if_word(s))
+                                    .collect();
+        tokens
+    }
+
+    // Removes punctuation from words, ie "hello!!!" -> "hello" and ",don't??" -> "don't"
+    // Keeps most emoticons, ie ":^)" -> ":^)"\
+    fn strip_punc_if_word(token: &str) -> &str {
+        let stripped = token.trim_matches(|c| PUNCTUATION.contains(c));
+        if stripped.len() <= 1 {
+            return token;
+        }
+        stripped
+    }
+
+    // Determines if message has a mix of both all caps and non all caps words
+    fn has_mixed_caps(tokens: &Vec<&str>) -> bool {
+        let (mut has_caps, mut has_non_caps) = (false, false);
+        for token in tokens.iter() {
+            if is_all_caps(token) {
+                has_caps = true;
+            } else {
+                has_non_caps = true;
+            }
+            if has_non_caps && has_caps {
+                return true;
+            }
+        }
+        false
+    }
+
+    //uses empirical values to determine how the use of '?' and '!' contribute to sentiment
+    fn get_punctuation_emphasis(text: &str) -> f64 {
+       let emark_count: i32 = text.as_bytes().iter().filter(|b| **b == b'!').count() as i32;
+       let qmark_count: i32 = text.as_bytes().iter().filter(|b| **b == b'?').count() as i32;
+
+       let emark_emph = min(emark_count, MAX_EMARK) as f64 * EMARK_INCR;
+       let mut qmark_emph = (qmark_count as f64) * QMARK_INCR;
+       if qmark_count > MAX_QMARK {
+           qmark_emph = MAX_QMARK_INCR;
+       }
+       qmark_emph + emark_emph
+    }
+}
+
+//Checks if all letters in token are capitalized
 fn is_all_caps(token: &str) -> bool {
-    ALL_CAPS_RE.is_match(token)
+    ALL_CAPS_RE.is_match(token) && token.len() > 1
 }
 
-fn is_negated(input_word: &str) -> bool {
-    NEGATION_TOKENS.contains(&input_word.to_lowercase().as_str())
+//Checks if token is in the list of NEGATION_SCALAR
+fn is_negated(token: &str) -> bool {
+    if NEGATION_TOKENS.contains(&token.to_lowercase().as_str()) {
+        return true;
+    }
+    token.contains("n't")
 }
 
+//Normalizes score between -1.0 and 1.0. Alpha value is expected upper limit for a score
 fn normalize_score(score: f64) -> f64 {
     let norm_score = score / (score * score + NORMALIZATION_ALPHA).sqrt();
     if norm_score < -1.0 {
@@ -124,6 +210,7 @@ fn normalize_score(score: f64) -> f64 {
     norm_score
 }
 
+//Checks how previous tokens affect the valence of the current token
 fn scalar_inc_dec(token: &str, valence: f64, has_mixed_caps: bool) -> f64 {
     let mut scalar = 0.0;
     let token_lower: &str = &token.to_lowercase();
@@ -143,58 +230,7 @@ fn scalar_inc_dec(token: &str, valence: f64, has_mixed_caps: bool) -> f64 {
     scalar
 }
 
-struct ParsedText<'a> {
-    tokens: Vec<&'a str>,
-    has_mixed_caps: bool,
-}
-
-impl<'a> ParsedText<'a> {
-    fn from_text(text: &'a str) -> ParsedText {
-        let _tokens = ParsedText::tokenize(text);
-        let _has_mixed_caps = ParsedText::has_mixed_caps(&_tokens);
-        ParsedText {
-            tokens: _tokens,
-            has_mixed_caps: _has_mixed_caps,
-         }
-    }
-
-    fn tokenize(text: &'a str) -> Vec<&str> {
-        let tokens: Vec<&str> = text.split_whitespace()
-                                    .filter(|s| s.len() > 1)
-                                    .map(|s| ParsedText::strip_punc_if_word(s))
-                                    .collect();
-        tokens
-    }
-
-    /**
-    Removes punctuation from words, ie "hello!!!" -> "hello" and ",don't??" -> "don't"
-    Keeps most emoticons, ie ":^)" -> ":^)"
-    **/
-    fn strip_punc_if_word(word_or_emot: &str) -> &str {
-        let stripped = word_or_emot.trim_matches(|c| PUNCTUATION.contains(c));
-        if stripped.len() <= 1 {
-            return word_or_emot;
-        }
-        stripped
-    }
-
-    fn has_mixed_caps(input_words: &Vec<&str>) -> bool {
-        let (mut has_caps, mut has_non_caps) = (false, false);
-        for word in input_words.iter() {
-            if is_all_caps(word) {
-                has_caps = true;
-            } else {
-                has_non_caps = true;
-            }
-            if has_non_caps && has_caps {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-fn sift_sentiment_scores(scores: Vec<f64>) -> (f64, f64, u32) {
+fn sum_sentiment_scores(scores: Vec<f64>) -> (f64, f64, u32) {
     let (mut pos_sum, mut neg_sum, mut neu_count) = (0f64, 0f64, 0);
     for score in scores {
         if score > 0f64 {
@@ -206,51 +242,6 @@ fn sift_sentiment_scores(scores: Vec<f64>) -> (f64, f64, u32) {
         }
     }
     (pos_sum, neg_sum, neu_count)
-}
-
-fn get_punctuation_emphasis(text: &str) -> f64 {
-   let emark_count: i32 = text.as_bytes().iter().filter(|b| **b == b'!').count() as i32;
-   let qmark_count: i32 = text.as_bytes().iter().filter(|b| **b == b'?').count() as i32;
-
-   let emark_emph = min(emark_count, MAX_EMARK) as f64 * EMARK_INCR;
-   let mut qmark_emph = (qmark_count as f64) * QMARK_INCR;
-   if qmark_count > MAX_QMARK {
-       qmark_emph = MAX_QMARK_INCR;
-   }
-   qmark_emph + emark_emph
-}
-
-fn negation_check(valence: f64, words: &Vec<&str>, start_i: usize, i: usize) -> f64 {
-   let mut valence = valence;
-   let words: Vec<String> = words.iter().map(|s| s.to_lowercase()).collect();
-   if start_i == 0 {
-       if is_negated(&words[i - start_i - 1]) {
-           valence *= NEGATION_SCALAR;
-       }
-   } else if start_i == 1 {
-       if words[i - 2] == "never" &&
-         (words[i - 1] == "so" ||
-          words[i - 1] == "this") {
-           valence *= 1.25
-       } else if words[i - 2] == "without" && words[i - 1] == "doubt" {
-           valence *= 1.0
-       } else if is_negated(&words[i - start_i - 1]) {
-           valence *= NEGATION_SCALAR;
-       }
-   } else if start_i == 2 {
-       if words[i - 3] == "never" &&
-          words[i - 2] == "so" || words[i - 2] == "this" ||
-          words[i - 1] == "so" || words[i - 1] == "this" {
-           valence *= 1.25
-       } else if words[i - 3] == "without" &&
-                 words[i - 2] == "doubt" ||
-                 words[i - 1] == "doubt" {
-           valence *= 1.0;
-       } else if is_negated(&words[i - start_i - 1]) {
-           valence *= NEGATION_SCALAR;
-       }
-   }
-   valence
 }
 
 pub struct SentimentIntensityAnalyzer<'a> {
@@ -274,11 +265,10 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
         }
     }
 
-    fn score_valence(&self, sentiments: Vec<f64>, text: &str) -> HashMap<&str, f64> {
+    fn get_total_sentiment(&self, sentiments: Vec<f64>, punct_emph_amplifier: f64) -> HashMap<&str, f64> {
         let (mut neg, mut neu, mut pos, mut compound) = (0f64, 0f64, 0f64, 0f64);
         if sentiments.len() > 0 {
             let mut total_sentiment: f64 = sentiments.iter().sum();
-            let punct_emph_amplifier = get_punctuation_emphasis(text);
             if total_sentiment > 0f64 {
                 total_sentiment += punct_emph_amplifier;
             } else {
@@ -286,7 +276,7 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
             }
             compound = normalize_score(total_sentiment);
 
-            let (mut pos_sum, mut neg_sum, neu_count) = sift_sentiment_scores(sentiments);
+            let (mut pos_sum, mut neg_sum, neu_count) = sum_sentiment_scores(sentiments);
 
             if pos_sum > neg_sum.abs() {
                 pos_sum += punct_emph_amplifier;
@@ -308,21 +298,22 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
 
     pub fn polarity_scores(&self, text: &str) -> HashMap<&str, f64>{
         let text = self.append_emoji_descriptions(text);
-        let sentitext = ParsedText::from_text(&text);
+        let parsedtext = ParsedText::from_text(&text);
         let mut sentiments = Vec::new();
-        let words = &sentitext.tokens;
+        let tokens = &parsedtext.tokens;
 
-        for (i, word) in words.iter().enumerate() {
+        for (i, word) in tokens.iter().enumerate() {
             if BOOSTER_DICT.contains_key(word.to_lowercase().as_str()) {
                 sentiments.push(0f64);
-            } else if i < words.len() - 1 && word.to_lowercase() == "kind"
-                                  && words[i + 1].to_lowercase() == "of" {
+            } else if i < tokens.len() - 1 && word.to_lowercase() == "kind"
+                                  && tokens[i + 1].to_lowercase() == "of" {
                 sentiments.push(0f64);
             } else {
-                sentiments.push(self.sentiment_valence(&sentitext, word, i));
+                sentiments.push(self.sentiment_valence(&parsedtext, word, i));
             }
         }
-        self.score_valence(sentiments, &text)
+        but_check(&tokens, &mut sentiments);
+        self.get_total_sentiment(sentiments, parsedtext.punc_amplifier)
     }
 
     //Removes emoji and appends their description to the end the input text
@@ -364,12 +355,96 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
                     valence += s;
                     valence = negation_check(valence, tokens, start_i, i);
                     if start_i == 2 {
-                        //TODO: special_idioms
+                        //The original has an implementation to handle "special idioms" here
+                        //I'm skeptical as to whether it properly handles negations
                     }
                 }
             }
-            //TODO: Least check
+            valence = least_check(valence, tokens, i);
         }
         valence
     }
 }
+
+/**
+ * Check for specific patterns or tokens, and modify sentiment as needed
+ **/
+fn negation_check(valence: f64, tokens: &Vec<&str>, start_i: usize, i: usize) -> f64 {
+   let mut valence = valence;
+   let tokens: Vec<String> = tokens.iter().map(|s| s.to_lowercase()).collect();
+   if start_i == 0 {
+       if is_negated(&tokens[i - start_i - 1]) {
+           valence *= NEGATION_SCALAR;
+       }
+   } else if start_i == 1 {
+       if tokens[i - 2] == "never" &&
+         (tokens[i - 1] == "so" ||
+          tokens[i - 1] == "this") {
+           valence *= 1.25
+       } else if tokens[i - 2] == "without" && tokens[i - 1] == "doubt" {
+           valence *= 1.0
+       } else if is_negated(&tokens[i - start_i - 1]) {
+           valence *= NEGATION_SCALAR;
+       }
+   } else if start_i == 2 {
+       if tokens[i - 3] == "never" &&
+          tokens[i - 2] == "so" || tokens[i - 2] == "this" ||
+          tokens[i - 1] == "so" || tokens[i - 1] == "this" {
+           valence *= 1.25
+       } else if tokens[i - 3] == "without" &&
+                 tokens[i - 2] == "doubt" ||
+                 tokens[i - 1] == "doubt" {
+           valence *= 1.0;
+       } else if is_negated(&tokens[i - start_i - 1]) {
+           valence *= NEGATION_SCALAR;
+       }
+   }
+   valence
+}
+
+// If "but" is in the tokens, scales down the sentiment of words before "but" and
+// adds more emphasis to the words after
+fn but_check(tokens: &Vec<&str>, sentiments: &mut Vec<f64>) {
+    match tokens.iter().position(|&s| s.to_lowercase() == "but") {
+        Some(but_index) => {
+            for i in 0..sentiments.len() {
+                if i < but_index {
+                    sentiments[i] *= 0.5;
+                } else if i > but_index {
+                    sentiments[i] *= 1.5;
+                }
+            }
+        },
+        None => return,
+    }
+}
+
+fn least_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
+    let mut valence = _valence;
+    if i > 1 && tokens[i - 1].to_lowercase() == "least"
+             && tokens[i - 2].to_lowercase() != "at"
+             && tokens[i - 2].to_lowercase() != "very" {
+        valence *= NEGATION_SCALAR;
+    } else if i > 0 && tokens[i - 1].to_lowercase() == "least" {
+        valence *= NEGATION_SCALAR;
+    }
+    valence
+}
+
+// //This was present in the original python implementation, but unused
+// fn idioms_check(valence: f64, text: &str) -> f64 {
+//     let mut total_valence = 0f64;
+//     let mut count = 0;
+//     for (idiom, val) in SENTIMENT_LADEN_IDIOMS.iter() {
+//         if text.contains(idiom) {
+//             total_valence += val;
+//             count += 1;
+//         }
+//     }
+//     if count > 0 {
+//         return total_valence / count as f64;
+//     }
+//     0f64
+// }
+
+pub mod demo;
