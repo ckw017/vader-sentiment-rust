@@ -83,10 +83,10 @@ lazy_static! {
     //      "on the ball" => 2.0, "under the weather" => -2.0];
 
 
-    //check for special case idioms containing lexicon words
-    // static ref SPECIAL_CASE_IDIOMS: HashMap<&'static str, f64> = hashmap![
-    //      "the shit" => 3.0, "the bomb" => 3.0, "bad ass" => 1.5, "yeah right" => -2.0,
-    //      "kiss of death" => -1.5];
+    // check for special case idioms containing lexicon words
+    static ref SPECIAL_CASE_IDIOMS: HashMap<&'static str, f64> = hashmap![
+         "the shit" => 3.0, "the bomb" => 3.0, "bad ass" => 1.5, "yeah right" => -2.0,
+         "kiss of death" => -1.5];
 
     static ref ALL_CAPS_RE: Regex = Regex::new(r"^[A-Z\W]+$").unwrap();
 
@@ -363,8 +363,7 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
                     valence += s;
                     valence = negation_check(valence, tokens, start_i, i);
                     if start_i == 2 {
-                        //The original has an implementation to handle "special idioms" here
-                        //I'm skeptical as to whether it properly handles negations
+                        valence = special_idioms_check(valence, tokens, i);
                     }
                 }
             }
@@ -454,5 +453,32 @@ fn least_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
 //     }
 //     0f64
 // }
+
+fn special_idioms_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
+    assert_eq!(i > 2, true);
+    let mut valence = _valence;
+    let mut end_i = i + 1;
+
+    //if i isn't the last index
+    if tokens.len() - 1 > i {
+        //make the end of the window 2 words ahead, or until the end of the tokens
+        end_i = min(i + 3, tokens.len());
+    }
+    let target_window = tokens[(i - 3)..end_i].join(" ").to_lowercase();
+    println!("{}", target_window);
+    for (key, val) in SPECIAL_CASE_IDIOMS.iter() {
+        if target_window.contains(key) {
+            valence = *val;
+            break;
+        }
+    }
+    let prev_three = tokens[(i - 3)..i].join(" ").to_lowercase();
+    for (key, val) in BOOSTER_DICT.iter() {
+        if prev_three.contains(key) {
+            valence += *val;
+        }
+    }
+    valence
+}
 
 pub mod demo;
