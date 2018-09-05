@@ -54,7 +54,7 @@ VADER (Valence Aware Dictionary and sEntiment Reasoner) is a lexicon and rule-ba
 
 # Citation Information
 
-If you use either the dataset or any of the VADER sentiment analysis tools (VADER sentiment lexicon or Python code for rule-based sentiment analysis engine) in your research, please cite the above paper. For example:  
+If you use either the dataset or any of the VADER sentiment analysis tools (VADER sentiment lexicon or Rust code for rule-based sentiment analysis engine) in your research, please cite the above paper. For example:  
 
   **Hutto, C.J. & Gilbert, E.E. (2014). VADER: A Parsimonious Rule-based Model for Sentiment Analysis of Social Media Text. Eighth International Conference on Weblogs and Social Media (ICWSM-14). Ann Arbor, MI, June 2014.**
 
