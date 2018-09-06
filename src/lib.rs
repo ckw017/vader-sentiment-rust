@@ -307,6 +307,7 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
     pub fn polarity_scores(&self, text: &str) -> HashMap<&str, f64>{
         let text = self.append_emoji_descriptions(text);
         let parsedtext = ParsedText::from_text(&text);
+        println!("{:#?}", parsedtext.tokens);
         let mut sentiments = Vec::new();
         let tokens = &parsedtext.tokens;
 
@@ -327,14 +328,20 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
     //Removes emoji and appends their description to the end the input text
     fn append_emoji_descriptions(&self, text: &str) -> String {
         let mut result = String::new();
-        for token in text.split_whitespace() {
-            if self.emoji_lexicon.contains_key(token) {
-                result.push_str(self.emoji_lexicon.get(token).unwrap());
+        let mut prev_space = true;
+        for chr in text.chars() {
+            if self.emoji_lexicon.contains_key(chr.to_string().as_str()) {
+                if !prev_space {
+                    result.push(' ');
+                }
+                result.push_str(self.emoji_lexicon.get(&chr.to_string().as_str()).unwrap());
+                prev_space = false;
             } else {
-                result.push_str(token);
+                prev_space = chr == ' ';
+                result.push(chr);
             }
-            result.push(' ');
         }
+        println!("{}", result);
         result
     }
 
@@ -348,7 +355,7 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
                 if valence > 0f64 {
                     valence += C_INCR;
                 } else {
-                    valence -= C_INCR;
+                    valence -= C_INCR
                 }
             }
             for start_i in 0..3 {

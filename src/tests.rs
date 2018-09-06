@@ -39,3 +39,14 @@ fn but_check_test() {
 fn demo_test() {
     ::demo::run_demo();
 }
+
+#[test]
+fn embedded_emoji_test() {
+    let analyzer = ::SentimentIntensityAnalyzer::new();
+    let single_emoji = "😀";
+    let embedded_emoji = "heyyyy 😀 what're you up to???";
+    let multiple_emoji = "woah there 😀😀😀 :) :)";
+    assert_eq!(analyzer.append_emoji_descriptions(single_emoji), "grinning face");
+    assert_eq!(analyzer.append_emoji_descriptions(embedded_emoji), "heyyyy grinning face what're you up to???");
+    assert_eq!(analyzer.append_emoji_descriptions(multiple_emoji), "woah there grinning face grinning face grinning face :) :)");
+}
