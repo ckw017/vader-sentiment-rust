@@ -2,6 +2,10 @@
 name = "vader_sentiment"
 version = "0.1.0"
 authors = ["Chris <chriswong21@berkeley.edu>"]
+license = "MIT"
+description = "Bindings for Rust from the original Python VaderSentiment analysis tool."
+repository = "https://github.com/ckw017/vader-sentiment-rust"
+documentation = "https://docs.rs/vader_sentiment"
 
 [dependencies]
 regex = "1"
