@@ -1,9 +1,13 @@
+extern crate unicase;
+
+use unicase::UniCase;
+
 #[test]
 fn test_lexicon() {
-    assert_eq!(*::LEXICON.get("feudally").unwrap(), -0.6);
-    assert_eq!(*::LEXICON.get("irrationalism").unwrap(), -1.5);
-    assert_eq!(*::LEXICON.get("sentimentalize").unwrap(), 0.8);
-    assert_eq!(*::LEXICON.get("wisewomen").unwrap(), 1.3);
+    assert_eq!(*::LEXICON.get(&UniCase::new("feudally")).unwrap(), -0.6);
+    assert_eq!(*::LEXICON.get(&UniCase::new("irrationalism")).unwrap(), -1.5);
+    assert_eq!(*::LEXICON.get(&UniCase::new("sentimentalize")).unwrap(), 0.8);
+    assert_eq!(*::LEXICON.get(&UniCase::new("wisewomen")).unwrap(), 1.3);
 }
 
 #[test]
@@ -17,7 +21,8 @@ fn test_emoji_lexicon() {
 fn test_parsed_text() {
     let messy_text = "WOAH!!! ,Who? DO u Think you're?? :) :D :^(";
     let parsed_messy = ::ParsedText::from_text(messy_text);
-    assert_eq!(parsed_messy.tokens, vec!["WOAH", "Who", "DO", "Think", "you\'re", ":)", ":D", ":^("]);
+    let expected_text: Vec<UniCase<&str>> = ["WOAH", "Who", "DO", "Think", "you\'re", ":)", ":D", ":^("].iter().map(| r| UniCase::new(*r)).collect();
+    assert_eq!(parsed_messy.tokens, expected_text);
     assert_eq!(parsed_messy.has_mixed_caps, true);
     assert_eq!(parsed_messy.punc_amplifier, 1.416);
 
@@ -29,7 +34,7 @@ fn test_parsed_text() {
 
 #[test]
 fn but_check_test() {
-    let tokens     = vec!["yeah", "waffles", "are", "great", "but", "have", "you", "ever", "tried", "spam"];
+    let tokens: Vec<UniCase<&str>> = ["yeah", "waffles", "are", "great", "but", "have", "you", "ever", "tried", "spam"].iter().map(| r| UniCase::new(*r)).collect();
     let mut sents  = vec![ 0.5,    0.1,       0.0,   0.2,     0.6,   0.25,    0.5,   0.5,    0.5,     0.5];
     ::but_check(&tokens, &mut sents);
     assert_eq!(sents, vec![0.25,   0.05,      0.0,   0.1,     0.6,   0.375,  0.75,   0.75,  0.75,   0.75]);

@@ -9,10 +9,12 @@
 #[macro_use] extern crate maplit;
 #[macro_use] extern crate lazy_static;
 extern crate regex;
+extern crate unicase;
 
 use std::cmp::min;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use regex::Regex;
+use unicase::UniCase;
 
 #[cfg(test)]
 mod tests;
@@ -36,21 +38,22 @@ const MAX_QMARK_INCR: f64 = 0.96;
 
 const NORMALIZATION_ALPHA: f64 = 15.0;
 
-static NEGATION_TOKENS: [&'static str; 59] =
-    ["aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt",
-    "ain't", "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't",
-    "dont", "hadnt", "hasnt", "havent", "isnt", "mightnt", "mustnt", "neither",
-    "don't", "hadn't", "hasn't", "haven't", "isn't", "mightn't", "mustn't",
-    "neednt", "needn't", "never", "none", "nope", "nor", "not", "nothing", "nowhere",
-    "oughtnt", "shant", "shouldnt", "uhuh", "wasnt", "werent",
-    "oughtn't", "shan't", "shouldn't", "uh-uh", "wasn't", "weren't",
-    "without", "wont", "wouldnt", "won't", "wouldn't", "rarely", "seldom", "despite"];
-
 static RAW_LEXICON: &'static str = include_str!("resources/vader_lexicon.txt");
 static RAW_EMOJI_LEXICON: &'static str = include_str!("resources/emoji_utf8_lexicon.txt");
 
 lazy_static! {
-    static ref BOOSTER_DICT: HashMap<&'static str, f64> =  hashmap![
+
+    static ref NEGATION_TOKENS: HashSet<UniCase<&'static str>> = convert_args!(hashset!(
+        "aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt",
+        "ain't", "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't",
+        "dont", "hadnt", "hasnt", "havent", "isnt", "mightnt", "mustnt", "neither",
+        "don't", "hadn't", "hasn't", "haven't", "isn't", "mightn't", "mustn't",
+        "neednt", "needn't", "never", "none", "nope", "nor", "not", "nothing", "nowhere",
+        "oughtnt", "shant", "shouldnt", "uhuh", "wasnt", "werent",
+        "oughtn't", "shan't", "shouldn't", "uh-uh", "wasn't", "weren't",
+        "without", "wont", "wouldnt", "won't", "wouldn't", "rarely", "seldom", "despite"));
+
+    static ref BOOSTER_DICT: HashMap<UniCase<&'static str>, f64> =  convert_args!(hashmap!(
          "absolutely"=> B_INCR, "amazingly"=> B_INCR, "awfully"=> B_INCR,
           "completely"=> B_INCR, "considerable"=> B_INCR, "considerably"=> B_INCR,
           "decidedly"=> B_INCR, "deeply"=> B_INCR, "effing"=> B_INCR, "enormous"=> B_INCR, "enormously"=> B_INCR,
@@ -73,7 +76,7 @@ lazy_static! {
           "occasional"=> B_DECR, "occasionally"=> B_DECR, "partly"=> B_DECR,
           "scarce"=> B_DECR, "scarcely"=> B_DECR, "slight"=> B_DECR, "slightly"=> B_DECR, "somewhat"=> B_DECR,
           "sort of"=> B_DECR, "sorta"=> B_DECR, "sortof"=> B_DECR, "sort-of"=> B_DECR
-];
+));
 
     /**
      * These dicts were used in some WIP or planned features in the original
@@ -90,23 +93,37 @@ lazy_static! {
 
 
     // check for special case idioms containing lexicon words
-    static ref SPECIAL_CASE_IDIOMS: HashMap<&'static str, f64> = hashmap![
+    static ref SPECIAL_CASE_IDIOMS: HashMap<UniCase<&'static str>, f64> = convert_args!(hashmap!(
          "the shit" => 3.0, "the bomb" => 3.0, "bad ass" => 1.5, "badass" => 1.5, "yeah right" => -2.0,
-         "kiss of death" => -1.5, "to die for" => 3.0];
+         "kiss of death" => -1.5, "to die for" => 3.0));
 
     static ref ALL_CAPS_RE: Regex = Regex::new(r"^[A-Z\W]+$").unwrap();
 
     static ref PUNCTUATION: &'static str = "[!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~]";
 
-    pub static ref LEXICON: HashMap<&'static str, f64> = parse_raw_lexicon(RAW_LEXICON);
+    pub static ref LEXICON: HashMap<UniCase<&'static str>, f64> = parse_raw_lexicon(RAW_LEXICON);
     pub static ref EMOJI_LEXICON: HashMap<&'static str, &'static str> = parse_raw_emoji_lexicon(RAW_EMOJI_LEXICON);
+
+    static ref STATIC_BUT: UniCase<&'static str> = UniCase::new("but");
+    static ref STATIC_THIS: UniCase<&'static str> = UniCase::new("this");
+    static ref STATIC_AT: UniCase<&'static str> = UniCase::new("at");
+    static ref STATIC_LEAST: UniCase<&'static str> = UniCase::new("least");
+    static ref STATIC_VERY: UniCase<&'static str> = UniCase::new("very");
+    static ref STATIC_WITHOUT: UniCase<&'static str> = UniCase::new("without");
+    static ref STATIC_DOUBT: UniCase<&'static str> = UniCase::new("doubt");
+    static ref STATIC_SO: UniCase<&'static str> = UniCase::new("so");
+    static ref STATIC_NEVER: UniCase<&'static str> = UniCase::new("never");
+    static ref STATIC_KIND: UniCase<&'static str> = UniCase::new("kind");
+    static ref STATIC_OF: UniCase<&'static str> = UniCase::new("of");
+
+
 }
 
 
 /**
  * Takes the raw text of the lexicon files and creates HashMaps
  **/
-pub fn parse_raw_lexicon(raw_lexicon: &str) -> HashMap<&str, f64> {
+pub fn parse_raw_lexicon(raw_lexicon: &str) -> HashMap<UniCase<&str>, f64> {
     let lines = raw_lexicon.trim_end_matches("\n").split("\n");
     let mut lex_dict = HashMap::new();
     for line in lines {
@@ -116,15 +133,18 @@ pub fn parse_raw_lexicon(raw_lexicon: &str) -> HashMap<&str, f64> {
         let mut split_line = line.split('\t');
         let word = split_line.next().unwrap();
         let val  = split_line.next().unwrap();
-        lex_dict.insert(word, val.parse().unwrap());
+        lex_dict.insert(UniCase::new(word), val.parse().unwrap());
     }
     lex_dict
 }
 
 pub fn parse_raw_emoji_lexicon(raw_emoji_lexicon: &str) -> HashMap<&str, &str> {
-    let lines = raw_emoji_lexicon.split("\n");
+    let lines = raw_emoji_lexicon.trim_end_matches("\n").split("\n");
     let mut emoji_dict = HashMap::new();
     for line in lines {
+        if line.is_empty() {
+          continue;
+        }
         let mut split_line = line.split('\t');
         let word = split_line.next().unwrap();
         let desc  = split_line.next().unwrap();
@@ -137,7 +157,7 @@ pub fn parse_raw_emoji_lexicon(raw_emoji_lexicon: &str) -> HashMap<&str, &str> {
  *  Stores tokens and useful info about text
  **/
 struct ParsedText<'a> {
-    tokens: Vec<&'a str>,
+    tokens: Vec<UniCase<&'a str>>,
     has_mixed_caps: bool,
     punc_amplifier: f64,
 }
@@ -155,10 +175,11 @@ impl<'a> ParsedText<'a> {
          }
     }
 
-    fn tokenize(text: &'a str) -> Vec<&str> {
-        let tokens: Vec<&str> = text.split_whitespace()
+    fn tokenize(text: &str) -> Vec<UniCase<&str>> {
+        let tokens = text.split_whitespace()
                                     .filter(|s| s.len() > 1)
                                     .map(|s| ParsedText::strip_punc_if_word(s))
+                                    .map(UniCase::new)
                                     .collect();
         tokens
     }
@@ -174,10 +195,10 @@ impl<'a> ParsedText<'a> {
     }
 
     // Determines if message has a mix of both all caps and non all caps words
-    fn has_mixed_caps(tokens: &Vec<&str>) -> bool {
+    fn has_mixed_caps<S: AsRef<str>>(tokens: &[S]) -> bool {
         let (mut has_caps, mut has_non_caps) = (false, false);
         for token in tokens.iter() {
-            if is_all_caps(token) {
+            if is_all_caps(token.as_ref()) {
                 has_caps = true;
             } else {
                 has_non_caps = true;
@@ -204,13 +225,14 @@ impl<'a> ParsedText<'a> {
 }
 
 //Checks if all letters in token are capitalized
-fn is_all_caps(token: &str) -> bool {
-    ALL_CAPS_RE.is_match(token) && token.len() > 1
+fn is_all_caps<S: AsRef<str>>(token: S) -> bool {
+    let token_ref = token.as_ref();
+    ALL_CAPS_RE.is_match(token_ref) && token_ref.len() > 1
 }
 
 //Checks if token is in the list of NEGATION_SCALAR
-fn is_negated(token: &str) -> bool {
-    if NEGATION_TOKENS.contains(&token.to_lowercase().as_str()) {
+fn is_negated(token: &UniCase<&str>) -> bool {
+    if NEGATION_TOKENS.contains(token) {
         return true;
     }
     token.contains("n't")
@@ -228,11 +250,10 @@ fn normalize_score(score: f64) -> f64 {
 }
 
 //Checks how previous tokens affect the valence of the current token
-fn scalar_inc_dec(token: &str, valence: f64, has_mixed_caps: bool) -> f64 {
+fn scalar_inc_dec(token: &UniCase<&str>, valence: f64, has_mixed_caps: bool) -> f64 {
     let mut scalar = 0.0;
-    let token_lower: &str = &token.to_lowercase();
-    if BOOSTER_DICT.contains_key(token_lower) {
-        scalar = *BOOSTER_DICT.get(token_lower).unwrap();
+    if BOOSTER_DICT.contains_key(token) {
+        scalar = *BOOSTER_DICT.get(token).unwrap();
         if valence < 0.0 {
             scalar *= -1.0;
         }
@@ -262,7 +283,7 @@ fn sum_sentiment_scores(scores: Vec<f64>) -> (f64, f64, u32) {
 }
 
 pub struct SentimentIntensityAnalyzer<'a> {
-    lexicon: &'a HashMap<&'a str, f64>,
+    lexicon: &'a HashMap<UniCase<&'a str>, f64>,
     emoji_lexicon: &'a HashMap<&'a str, &'a str>,
 }
 
@@ -274,7 +295,7 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
         }
     }
 
-    pub fn from_lexicon<'b>(_lexicon: &'b HashMap<&str, f64>) ->
+    pub fn from_lexicon<'b>(_lexicon: &'b HashMap<UniCase<&str>, f64>) ->
                                         SentimentIntensityAnalyzer<'b> {
         SentimentIntensityAnalyzer {
             lexicon: _lexicon,
@@ -321,16 +342,16 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
         let tokens = &parsedtext.tokens;
 
         for (i, word) in tokens.iter().enumerate() {
-            if BOOSTER_DICT.contains_key(word.to_lowercase().as_str()) {
+            if BOOSTER_DICT.contains_key(word) {
                 sentiments.push(0f64);
-            } else if i < tokens.len() - 1 && word.to_lowercase() == "kind"
-                                  && tokens[i + 1].to_lowercase() == "of" {
+            } else if i < tokens.len() - 1 && word == &*STATIC_KIND
+                                  && tokens[i + 1] == *STATIC_OF {
                 sentiments.push(0f64);
             } else {
                 sentiments.push(self.sentiment_valence(&parsedtext, word, i));
             }
         }
-        but_check(&tokens, &mut sentiments);
+        but_check(tokens, &mut sentiments);
         self.get_total_sentiment(sentiments, parsedtext.punc_amplifier)
     }
 
@@ -339,11 +360,12 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
         let mut result = String::new();
         let mut prev_space = true;
         for chr in text.chars() {
-            if self.emoji_lexicon.contains_key(chr.to_string().as_str()) {
+            let chr_string = chr.to_string();
+            if let Some(chr_replacement) = self.emoji_lexicon.get(chr_string.as_str()) {
                 if !prev_space {
                     result.push(' ');
                 }
-                result.push_str(self.emoji_lexicon.get(&chr.to_string().as_str()).unwrap());
+                result.push_str(chr_replacement);
                 prev_space = false;
             } else {
                 prev_space = chr == ' ';
@@ -354,12 +376,11 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
         result
     }
 
-    fn sentiment_valence(&self, parsed: &ParsedText, word: &str, i: usize) -> f64 {
+    fn sentiment_valence(&self, parsed: &ParsedText, word: &UniCase<&str>, i: usize) -> f64 {
         let mut valence = 0f64;
-        let word_lower = word.to_lowercase();
         let tokens = &parsed.tokens;
-        if self.lexicon.contains_key(word_lower.as_str()) {
-            valence = *self.lexicon.get(word_lower.as_str()).unwrap();
+        if let Some(word_valence) = self.lexicon.get(word) {
+            valence = *word_valence;
             if is_all_caps(word) && parsed.has_mixed_caps {
                 if valence > 0f64 {
                     valence += C_INCR;
@@ -369,8 +390,8 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
             }
             for start_i in 0..3 {
                 if i > start_i && !self.lexicon.contains_key(
-                                tokens[i - start_i - 1].to_lowercase().as_str()) {
-                    let mut s = scalar_inc_dec(tokens[i - start_i - 1], valence, parsed.has_mixed_caps);
+                                &tokens[i - start_i - 1]) {
+                    let mut s = scalar_inc_dec(&tokens[i - start_i - 1], valence, parsed.has_mixed_caps);
                     if start_i == 1 {
                         s *= 0.95;
                     } else if start_i == 2 {
@@ -392,31 +413,30 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
 /**
  * Check for specific patterns or tokens, and modify sentiment as needed
  **/
-fn negation_check(valence: f64, tokens: &Vec<&str>, start_i: usize, i: usize) -> f64 {
+fn negation_check(valence: f64, tokens: &[UniCase<&str>], start_i: usize, i: usize) -> f64 {
    let mut valence = valence;
-   let tokens: Vec<String> = tokens.iter().map(|s| s.to_lowercase()).collect();
    if start_i == 0 {
        if is_negated(&tokens[i - start_i - 1]) {
            valence *= NEGATION_SCALAR;
        }
    } else if start_i == 1 {
-       if tokens[i - 2] == "never" &&
-         (tokens[i - 1] == "so" ||
-          tokens[i - 1] == "this") {
+       if tokens[i - 2] == *STATIC_NEVER &&
+         (tokens[i - 1] == *STATIC_SO ||
+          tokens[i - 1] == *STATIC_THIS) {
            valence *= 1.25
-       } else if tokens[i - 2] == "without" && tokens[i - 1] == "doubt" {
+       } else if tokens[i - 2] == *STATIC_WITHOUT && tokens[i - 1] == *STATIC_DOUBT {
            valence *= 1.0
        } else if is_negated(&tokens[i - start_i - 1]) {
            valence *= NEGATION_SCALAR;
        }
    } else if start_i == 2 {
-       if tokens[i - 3] == "never" &&
-          tokens[i - 2] == "so" || tokens[i - 2] == "this" ||
-          tokens[i - 1] == "so" || tokens[i - 1] == "this" {
+       if tokens[i - 3] == *STATIC_NEVER &&
+          tokens[i - 2] == *STATIC_SO || tokens[i - 2] == *STATIC_THIS||
+          tokens[i - 1] == *STATIC_SO || tokens[i - 1] == *STATIC_THIS {
            valence *= 1.25
-       } else if tokens[i - 3] == "without" &&
-                 tokens[i - 2] == "doubt" ||
-                 tokens[i - 1] == "doubt" {
+       } else if tokens[i - 3] == *STATIC_WITHOUT &&
+                 tokens[i - 2] == *STATIC_DOUBT ||
+                 tokens[i - 1] == *STATIC_DOUBT {
            valence *= 1.0;
        } else if is_negated(&tokens[i - start_i - 1]) {
            valence *= NEGATION_SCALAR;
@@ -427,8 +447,8 @@ fn negation_check(valence: f64, tokens: &Vec<&str>, start_i: usize, i: usize) ->
 
 // If "but" is in the tokens, scales down the sentiment of words before "but" and
 // adds more emphasis to the words after
-fn but_check(tokens: &Vec<&str>, sentiments: &mut Vec<f64>) {
-    match tokens.iter().position(|&s| s.to_lowercase() == "but") {
+fn but_check(tokens: &[UniCase<&str>], sentiments: &mut Vec<f64>) {
+    match tokens.iter().position(|&s| s == *STATIC_BUT) {
         Some(but_index) => {
             for i in 0..sentiments.len() {
                 if i < but_index {
@@ -442,13 +462,13 @@ fn but_check(tokens: &Vec<&str>, sentiments: &mut Vec<f64>) {
     }
 }
 
-fn least_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
+fn least_check(_valence: f64, tokens: &[UniCase<&str>], i: usize) -> f64 {
     let mut valence = _valence;
-    if i > 1 && tokens[i - 1].to_lowercase() == "least"
-             && tokens[i - 2].to_lowercase() != "at"
-             && tokens[i - 2].to_lowercase() != "very" {
+    if i > 1 && tokens[i - 1] == *STATIC_LEAST
+             && tokens[i - 2] == *STATIC_AT
+             && tokens[i - 2] == *STATIC_VERY {
         valence *= NEGATION_SCALAR;
-    } else if i > 0 && tokens[i - 1].to_lowercase() == "least" {
+    } else if i > 0 && tokens[i - 1] == *STATIC_LEAST {
         valence *= NEGATION_SCALAR;
     }
     valence
@@ -470,7 +490,7 @@ fn least_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
 //     0f64
 // }
 
-fn special_idioms_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
+fn special_idioms_check(_valence: f64, tokens: &[UniCase<&str>], i: usize) -> f64 {
     assert_eq!(i > 2, true);
     let mut valence = _valence;
     let mut end_i = i + 1;
@@ -480,17 +500,20 @@ fn special_idioms_check(_valence: f64, tokens: &Vec<&str>, i: usize) -> f64 {
         //make the end of the window 2 words ahead, or until the end of the tokens
         end_i = min(i + 3, tokens.len());
     }
-    let target_window = tokens[(i - 3)..end_i].join(" ").to_lowercase();
+
+    // TODO: We can do this faster by comparing splits?
+    let target_window = tokens[(i - 3)..end_i].iter().map(|u| u.as_ref()).collect::<Vec<&str>>().join(" ").to_lowercase();
+
     println!("{}", target_window);
     for (key, val) in SPECIAL_CASE_IDIOMS.iter() {
-        if target_window.contains(key) {
+        if target_window.contains(key.as_ref()) {
             valence = *val;
             break;
         }
     }
-    let prev_three = tokens[(i - 3)..i].join(" ").to_lowercase();
+    let prev_three = tokens[(i - 3)..i].iter().map(|u| u.as_ref()).collect::<Vec<&str>>().join(" ").to_lowercase();
     for (key, val) in BOOSTER_DICT.iter() {
-        if prev_three.contains(key) {
+        if prev_three.contains(key.as_ref()) {
             valence += *val;
         }
     }
