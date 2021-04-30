@@ -337,7 +337,6 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
     pub fn polarity_scores(&self, text: &str) -> HashMap<&str, f64>{
         let text = self.append_emoji_descriptions(text);
         let parsedtext = ParsedText::from_text(&text);
-        println!("{:#?}", parsedtext.tokens);
         let mut sentiments = Vec::new();
         let tokens = &parsedtext.tokens;
 
@@ -372,7 +371,6 @@ impl<'a> SentimentIntensityAnalyzer<'a> {
                 result.push(chr);
             }
         }
-        println!("{}", result);
         result
     }
 
@@ -504,7 +502,6 @@ fn special_idioms_check(_valence: f64, tokens: &[UniCase<&str>], i: usize) -> f6
     // TODO: We can do this faster by comparing splits?
     let target_window = tokens[(i - 3)..end_i].iter().map(|u| u.as_ref()).collect::<Vec<&str>>().join(" ").to_lowercase();
 
-    println!("{}", target_window);
     for (key, val) in SPECIAL_CASE_IDIOMS.iter() {
         if target_window.contains(key.as_ref()) {
             valence = *val;
