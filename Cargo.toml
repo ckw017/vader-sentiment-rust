@@ -1,6 +1,6 @@
 [package]
 name = "vader_sentiment"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Chris <chriswong21@berkeley.edu>", "Mariana Meireles <mariana@psychonautgirl.space>"]
 license = "MIT"
 description = "Bindings for Rust from the original Python VaderSentiment analysis tool."
