@@ -95,7 +95,7 @@ lazy_static! {
     // check for special case idioms containing lexicon words
     static ref SPECIAL_CASE_IDIOMS: HashMap<UniCase<&'static str>, f64> = convert_args!(hashmap!(
          "the shit" => 3.0, "the bomb" => 3.0, "bad ass" => 1.5, "badass" => 1.5, "yeah right" => -2.0,
-         "kiss of death" => -1.5, "to die for" => 3.0));
+         "kiss of death" => -1.5, "to die for" => 3.0, "beating heart" => 3.1, "broken heart" => -2.9));
 
     static ref ALL_CAPS_RE: Regex = Regex::new(r"^[A-Z\W]+$").unwrap();
 
