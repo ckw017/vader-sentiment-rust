@@ -35,6 +35,19 @@ VADER (Valence Aware Dictionary and sEntiment Reasoner) is a lexicon and rule-ba
       println!("{:#?}", analyzer.polarity_scores("VADER is VERY SMART, handsome, and FUNNY."));
   }
 ```
+#### Separated Module
+
+```rust
+use std::collections::HashMap;
+use vader_sentiment;
+pub async fn get_sentiment(text: &str) -> HashMap<String, f64> {
+    let analyzer = vader_sentiment::SentimentIntensityAnalyzer::new();
+    let hmap = analyzer.polarity_scores(text);
+    hmap.into_iter()
+        .map(|(s, n)| (s.to_string(), n))
+        .collect::<HashMap<String, f64>>()
+}
+```
 
 ### Output
 ``` rust
